@@ -233,9 +233,22 @@ func (b *Brain) consolidateEpisodesToFacts(ctx context.Context, nsID int64, cp *
 	var episodes []models.Episode
 	for rows.Next() {
 		var e models.Episode
-		if err := rows.Scan(&e.ID, &e.NamespaceID, &e.Content, &e.Embedding, &e.EmbeddingModel, &e.OccurredAt, &e.CreatedAt); err != nil {
+		// embedding/embedding_model can be NULL (e.g. repeat-failure episodes
+		// were historically inserted without a vector). A value-typed scan
+		// destination makes NULL a fatal, sticky rows error that aborts the
+		// whole namespace read — scan through pointers and tolerate nil
+		// instead; clusterEpisodes already handles nil-embedding episodes.
+		var emb *pgvector.Vector
+		var embModel *string
+		if err := rows.Scan(&e.ID, &e.NamespaceID, &e.Content, &emb, &embModel, &e.OccurredAt, &e.CreatedAt); err != nil {
 			errs = append(errs, fmt.Sprintf("scan episode: %v", err))
 			continue
+		}
+		if emb != nil {
+			e.Embedding = *emb
+		}
+		if embModel != nil {
+			e.EmbeddingModel = *embModel
 		}
 		episodes = append(episodes, e)
 	}
