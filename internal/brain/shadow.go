@@ -61,6 +61,15 @@ func NewShadowMigrator(pool *pgxpool.Pool, emb embedder.Embedder, model string, 
 	return &ShadowMigrator{pool: pool, embedder: emb, model: model, dims: dims, batch: batch}, nil
 }
 
+// Embedder exposes the shadow embedder so an evaluation can embed queries with
+// the SAME model that produced the shadow vectors. Pairing them is mandatory:
+// embedding a query with one model and searching a column built by another
+// compares incomparable vectors and yields meaningless numbers.
+func (s *ShadowMigrator) Embedder() embedder.Embedder { return s.embedder }
+
+// Model returns the shadow model identifier.
+func (s *ShadowMigrator) Model() string { return s.model }
+
 // EnsureSchema pins the shadow column dimension and builds its HNSW index.
 // Idempotent: safe to call before every wave.
 //
