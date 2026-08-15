@@ -159,6 +159,7 @@ func main() {
 				},
 			},
 			shadowCommand(),
+			evalCommand(),
 			{
 				Name:  "consolidate",
 				Usage: "Consolidate memories",

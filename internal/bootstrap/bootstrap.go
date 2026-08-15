@@ -151,6 +151,7 @@ func buildShadowEmbedder(cfg *config.Config) (embedder.Embedder, error) {
 			RateLimitCooldown:   cfg.EmbedderRateLimitCooldown,
 			PaymentCooldown:     cfg.EmbedderPaymentCooldown,
 			ServerErrorCooldown: cfg.EmbedderServerErrorCooldown,
+			QueryInstruction:    cfg.ShadowQueryInstruction,
 		},
 	)
 }
@@ -208,6 +209,7 @@ func buildEmbedder(cfg *config.Config) (embedder.Embedder, error) {
 			RateLimitCooldown:   cfg.EmbedderRateLimitCooldown,
 			PaymentCooldown:     cfg.EmbedderPaymentCooldown,
 			ServerErrorCooldown: cfg.EmbedderServerErrorCooldown,
+			QueryInstruction:    cfg.QueryInstruction,
 		},
 	)
 }

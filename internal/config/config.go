@@ -56,6 +56,10 @@ type Config struct {
 	RetrievalMaxUtilityDelta float64       `env:"STASH_RETRIEVAL_MAX_UTILITY_DELTA" envDefault:"0.10"`
 	RecallHistoryRetention   time.Duration `env:"STASH_RECALL_HISTORY_RETENTION" envDefault:"2160h"`
 	EmbeddingBackfillBatch   int           `env:"STASH_EMBEDDING_BACKFILL_BATCH" envDefault:"25"`
+	// QueryInstruction enables asymmetric query encoding for the LIVE embedder.
+	// Empty by default and must stay empty for symmetric models like bge-m3,
+	// where wrapping a query corrupts its vector.
+	QueryInstruction string `env:"STASH_QUERY_INSTRUCTION" envDefault:""`
 
 	// Consolidation spend guardrails (TOL-295).
 	//
@@ -92,6 +96,10 @@ type Config struct {
 	// the `vector` type. Qwen3-Embedding-8B honours this via Matryoshka
 	// truncation: requesting 1024 returns exactly 1024 (measured 2026-08-14).
 	ShadowVectorDim int `env:"STASH_SHADOW_VECTOR_DIM" envDefault:"1024"`
+	// ShadowQueryInstruction turns on asymmetric query encoding for the shadow
+	// model. Qwen3-Embedding expects it; leaving it empty costs 1-5% retrieval
+	// performance per its model card.
+	ShadowQueryInstruction string `env:"STASH_SHADOW_QUERY_INSTRUCTION" envDefault:"Given a question, retrieve the stored facts that answer it"`
 	// Rows embedded per wave batch. Bounded so one command cannot spend without
 	// limit; the wave driver reports what it did and exits.
 	ShadowMigrateBatch int `env:"STASH_SHADOW_MIGRATE_BATCH" envDefault:"100"`
