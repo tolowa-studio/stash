@@ -198,7 +198,7 @@ func (r *Runner) Run(ctx context.Context, set *Set, emb embedder.Embedder, colum
 
 	results := make([]CaseResult, 0, len(set.Cases))
 	for _, c := range set.Cases {
-		vec, err := emb.Embed(ctx, c.Query)
+		vec, err := embedder.EmbedQuery(ctx, emb, c.Query)
 		if err != nil {
 			return Report{}, fmt.Errorf("evals: embed case %q: %w", c.ID, err)
 		}

@@ -27,6 +27,7 @@ type OpenAI struct {
 	rateLimitCooldown   time.Duration
 	paymentCooldown     time.Duration
 	serverErrorCooldown time.Duration
+	queryInstruction    string
 	now                 func() time.Time
 	circuitMu           sync.Mutex
 	circuitUntil        time.Time
@@ -38,6 +39,14 @@ type OpenAIConfig struct {
 	RateLimitCooldown   time.Duration
 	PaymentCooldown     time.Duration
 	ServerErrorCooldown time.Duration
+
+	// QueryInstruction turns on ASYMMETRIC query encoding. When set, queries
+	// are wrapped as "Instruct: {QueryInstruction}\nQuery: {query}" while
+	// documents stay raw — the format Qwen3-Embedding expects.
+	//
+	// Leave EMPTY for symmetric models such as BAAI/bge-m3: wrapping a query
+	// for a model that was not trained on the wrapper corrupts the vector.
+	QueryInstruction string
 }
 
 type UnavailableError struct {
@@ -100,6 +109,7 @@ func NewOpenAIWithConfig(baseURL, apiKey, model string, dims int, cfg OpenAIConf
 		rateLimitCooldown:   cfg.RateLimitCooldown,
 		paymentCooldown:     cfg.PaymentCooldown,
 		serverErrorCooldown: cfg.ServerErrorCooldown,
+		queryInstruction:    cfg.QueryInstruction,
 		now:                 time.Now,
 	}, nil
 }
@@ -130,6 +140,13 @@ func (o *OpenAI) openCircuit(status int, cooldown time.Duration) error {
 // Model returns the model string as passed at construction.
 func (o *OpenAI) Model() string {
 	return o.model
+}
+
+// QueryText applies the asymmetric query wrapper when one is configured.
+// With no instruction it returns the query unchanged, making this embedder
+// symmetric and byte-identical to its previous behaviour.
+func (o *OpenAI) QueryText(query string) string {
+	return FormatInstruct(o.queryInstruction, query)
 }
 
 // Dims returns the vector dimensions as passed at construction.

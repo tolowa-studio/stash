@@ -366,11 +366,11 @@ func (s *ShadowMigrator) Compare(ctx context.Context, liveEmbedder embedder.Embe
 		limit = 10
 	}
 
-	liveVec, err := liveEmbedder.Embed(ctx, query)
+	liveVec, err := embedder.EmbedQuery(ctx, liveEmbedder, query)
 	if err != nil {
 		return cmp, fmt.Errorf("shadow: embed query with live model: %w", err)
 	}
-	shadowVec, err := s.embedder.Embed(ctx, query)
+	shadowVec, err := embedder.EmbedQuery(ctx, s.embedder, query)
 	if err != nil {
 		return cmp, fmt.Errorf("shadow: embed query with shadow model: %w", err)
 	}
