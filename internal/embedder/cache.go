@@ -88,6 +88,11 @@ func (c *Cached) Dims() int {
 	return c.embedder.Dims()
 }
 
+// Availability delegates provider circuit state through the cache wrapper.
+func (c *Cached) Availability() error {
+	return Availability(c.embedder)
+}
+
 func (c *Cached) getCached(ctx context.Context, hash, model string) ([]float32, error) {
 	var vec pgvector.Vector
 	err := c.pool.QueryRow(ctx,

@@ -18,6 +18,10 @@ type Config struct {
 	OpenAIAPIKey                string        `env:"STASH_OPENAI_API_KEY,required"`
 	OpenAIBaseURL               string        `env:"STASH_OPENAI_BASE_URL,required"`
 	EmbeddingModel              string        `env:"STASH_EMBEDDING_MODEL,required"`
+	EmbedderMaxRetries          int           `env:"STASH_EMBEDDER_MAX_RETRIES" envDefault:"1"`
+	EmbedderRateLimitCooldown   time.Duration `env:"STASH_EMBEDDER_RATE_LIMIT_COOLDOWN" envDefault:"5m"`
+	EmbedderPaymentCooldown     time.Duration `env:"STASH_EMBEDDER_PAYMENT_COOLDOWN" envDefault:"1h"`
+	EmbedderServerErrorCooldown time.Duration `env:"STASH_EMBEDDER_SERVER_ERROR_COOLDOWN" envDefault:"1m"`
 	ReasonerModel               string        `env:"STASH_REASONER_MODEL,required"`
 	ReasonerAPIKey              string        `env:"STASH_REASONER_API_KEY"`
 	ReasonerBaseURL             string        `env:"STASH_REASONER_BASE_URL"`
@@ -51,6 +55,7 @@ type Config struct {
 	RetrievalUtilityWeight   float64       `env:"STASH_RETRIEVAL_UTILITY_WEIGHT" envDefault:"0.08"`
 	RetrievalMaxUtilityDelta float64       `env:"STASH_RETRIEVAL_MAX_UTILITY_DELTA" envDefault:"0.10"`
 	RecallHistoryRetention   time.Duration `env:"STASH_RECALL_HISTORY_RETENTION" envDefault:"2160h"`
+	EmbeddingBackfillBatch   int           `env:"STASH_EMBEDDING_BACKFILL_BATCH" envDefault:"25"`
 }
 
 func NewFromFile(filename string) (*Config, error) {

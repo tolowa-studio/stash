@@ -89,6 +89,7 @@ func New(ctx context.Context) (*Context, error) {
 		RetrievalUtilityWeight:         cfg.RetrievalUtilityWeight,
 		RetrievalMaxUtilityDelta:       cfg.RetrievalMaxUtilityDelta,
 		RecallHistoryRetention:         cfg.RecallHistoryRetention,
+		EmbeddingBackfillBatch:         cfg.EmbeddingBackfillBatch,
 	})
 	if err != nil {
 		pool.Close()
@@ -146,11 +147,17 @@ func buildLogger(cfg *config.Config) *slog.Logger {
 }
 
 func buildEmbedder(cfg *config.Config) (embedder.Embedder, error) {
-	return embedder.NewOpenAI(
+	return embedder.NewOpenAIWithConfig(
 		cfg.OpenAIBaseURL,
 		cfg.OpenAIAPIKey,
 		cfg.EmbeddingModel,
 		cfg.VectorDim,
+		embedder.OpenAIConfig{
+			MaxRetries:          cfg.EmbedderMaxRetries,
+			RateLimitCooldown:   cfg.EmbedderRateLimitCooldown,
+			PaymentCooldown:     cfg.EmbedderPaymentCooldown,
+			ServerErrorCooldown: cfg.EmbedderServerErrorCooldown,
+		},
 	)
 }
 

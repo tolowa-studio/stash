@@ -65,6 +65,7 @@ type Config struct {
 	RetrievalUtilityWeight         float64
 	RetrievalMaxUtilityDelta       float64
 	RecallHistoryRetention         time.Duration
+	EmbeddingBackfillBatch         int
 }
 
 func DefaultConfig() Config {
@@ -82,6 +83,7 @@ func DefaultConfig() Config {
 		RetrievalUtilityWeight:         0.08,
 		RetrievalMaxUtilityDelta:       0.10,
 		RecallHistoryRetention:         90 * 24 * time.Hour,
+		EmbeddingBackfillBatch:         25,
 	}
 }
 
@@ -117,6 +119,9 @@ func New(pool *pgxpool.Pool, e embedder.Embedder, r reasoner.Reasoner, q *querie
 	}
 	if cfg.RecallHistoryRetention <= 0 {
 		cfg.RecallHistoryRetention = 90 * 24 * time.Hour
+	}
+	if cfg.EmbeddingBackfillBatch <= 0 {
+		cfg.EmbeddingBackfillBatch = 25
 	}
 	return &Brain{
 		pool:     pool,
@@ -311,5 +316,11 @@ func (b *Brain) Ready(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("ready: %w", err)
 	}
-	return b.pool.Ping(ctx)
+	if err := b.pool.Ping(ctx); err != nil {
+		return err
+	}
+	if err := embedder.Availability(b.embedder); err != nil {
+		return fmt.Errorf("ready: %w", err)
+	}
+	return nil
 }
