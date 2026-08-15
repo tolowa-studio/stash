@@ -79,10 +79,15 @@ type Config struct {
 	// The API key deliberately reuses STASH_DEEPINFRA_EMBEDDING_API_KEY, the
 	// name the scoped provider JWT is already stored under in production, so the
 	// migration needs no credential move.
-	ShadowEmbeddingModel  string `env:"STASH_SHADOW_EMBEDDING_MODEL"`
-	ShadowEmbeddingAPIKey string `env:"STASH_DEEPINFRA_EMBEDDING_API_KEY"`
+	// NOTE: every field here MUST carry an envDefault. This Config is parsed
+	// with env.Options{RequiredIfNoDef: true}, so a tag without a default is
+	// silently MANDATORY — which would force three new variables onto every
+	// deployment and defeat the opt-in design entirely. Caught in production by
+	// a failed healthcheck on 2026-08-14; see TestShadowConfigFieldsAreOptional.
+	ShadowEmbeddingModel  string `env:"STASH_SHADOW_EMBEDDING_MODEL" envDefault:""`
+	ShadowEmbeddingAPIKey string `env:"STASH_DEEPINFRA_EMBEDDING_API_KEY" envDefault:""`
 	// Defaults to OpenAIBaseURL when empty.
-	ShadowEmbeddingBaseURL string `env:"STASH_SHADOW_OPENAI_BASE_URL"`
+	ShadowEmbeddingBaseURL string `env:"STASH_SHADOW_OPENAI_BASE_URL" envDefault:""`
 	// Must stay under pgvector's 2000-dimension ceiling for an HNSW index on
 	// the `vector` type. Qwen3-Embedding-8B honours this via Matryoshka
 	// truncation: requesting 1024 returns exactly 1024 (measured 2026-08-14).
