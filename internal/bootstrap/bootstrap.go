@@ -90,6 +90,8 @@ func New(ctx context.Context) (*Context, error) {
 		RetrievalMaxUtilityDelta:       cfg.RetrievalMaxUtilityDelta,
 		RecallHistoryRetention:         cfg.RecallHistoryRetention,
 		EmbeddingBackfillBatch:         cfg.EmbeddingBackfillBatch,
+		MaxRecordAttempts:              cfg.MaxRecordAttempts,
+		CycleReasonerCallCeiling:       cfg.CycleReasonerCallCeiling,
 	})
 	if err != nil {
 		pool.Close()

@@ -66,6 +66,15 @@ type Config struct {
 	RetrievalMaxUtilityDelta       float64
 	RecallHistoryRetention         time.Duration
 	EmbeddingBackfillBatch         int
+
+	// MaxRecordAttempts bounds how many times one record may fail a stage for a
+	// permanent reason before the watermark is allowed past it. Zero uses
+	// DefaultMaxRecordAttempts.
+	MaxRecordAttempts int
+
+	// CycleReasonerCallCeiling caps reasoner calls per namespace per cycle
+	// regardless of watermark state. Zero uses DefaultCycleReasonerCallCeiling.
+	CycleReasonerCallCeiling int
 }
 
 func DefaultConfig() Config {
@@ -84,6 +93,8 @@ func DefaultConfig() Config {
 		RetrievalMaxUtilityDelta:       0.10,
 		RecallHistoryRetention:         90 * 24 * time.Hour,
 		EmbeddingBackfillBatch:         25,
+		MaxRecordAttempts:              DefaultMaxRecordAttempts,
+		CycleReasonerCallCeiling:       DefaultCycleReasonerCallCeiling,
 	}
 }
 
