@@ -67,9 +67,34 @@ func NewShadowMigrator(pool *pgxpool.Pool, emb embedder.Embedder, model string, 
 // The dimension is applied here rather than in the migration so the target
 // stays configuration, not something frozen into a checked-in SQL file.
 func (s *ShadowMigrator) EnsureSchema(ctx context.Context) error {
+	// All DDL runs on ONE dedicated connection so the parallel-worker settings
+	// below actually apply to it. With a pool, each Exec may land on a
+	// different backend and a session-level SET would be silently lost.
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("shadow: acquire ddl connection: %w", err)
+	}
+	defer conn.Release()
+
+	// Railway's Postgres has a small /dev/shm, and parallel maintenance workers
+	// allocate shared memory segments sized from maintenance_work_mem. Both the
+	// ALTER TABLE rewrite and the HNSW build will fail with
+	//   "could not resize shared memory segment ... No space left on device"
+	//   (SQLSTATE 53100)
+	// if they try to parallelise. Serial maintenance is slower and works.
+	// Confirmed against production 2026-08-14.
+	for _, stmt := range []string{
+		"SET max_parallel_maintenance_workers = 0",
+		"SET max_parallel_workers_per_gather = 0",
+	} {
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("shadow: %q: %w", stmt, err)
+		}
+	}
+
 	for _, table := range []string{"episodes", "facts"} {
 		var typmod int
-		if err := s.pool.QueryRow(ctx,
+		if err := conn.QueryRow(ctx,
 			`SELECT atttypmod FROM pg_attribute a
 			   JOIN pg_class c ON a.attrelid = c.oid
 			  WHERE c.relname = $1 AND a.attname = 'embedding_shadow'`,
@@ -78,23 +103,25 @@ func (s *ShadowMigrator) EnsureSchema(ctx context.Context) error {
 			return fmt.Errorf("shadow: inspect %s.embedding_shadow: %w", table, err)
 		}
 
-		// atttypmod is -1 while the column is unconstrained; otherwise it is
-		// dims+4. A mismatch means someone changed the configured dimension
-		// after rows were written, which must not silently reshape the column.
+		// For pgvector, atttypmod IS the dimension (-1 while unconstrained).
+		// It is NOT the varchar convention of length+4 — assuming that read a
+		// correct vector(1024) back as 1020 and refused to proceed.
 		if typmod == -1 {
-			if _, err := s.pool.Exec(ctx,
+			if _, err := conn.Exec(ctx,
 				fmt.Sprintf("ALTER TABLE %s ALTER COLUMN embedding_shadow TYPE vector(%d)", table, s.dims),
 			); err != nil {
 				return fmt.Errorf("shadow: set %s dimension: %w", table, err)
 			}
-		} else if existing := typmod - 4; existing != s.dims {
+		} else if typmod != s.dims {
+			// A real mismatch means the configured dimension changed after rows
+			// were written. Refuse rather than silently reshaping the column.
 			return fmt.Errorf(
 				"shadow: %s.embedding_shadow is vector(%d) but configured dimension is %d; "+
-					"clear the column before changing dimension", table, existing, s.dims)
+					"clear the column before changing dimension", table, typmod, s.dims)
 		}
 
 		idx := table + "_embedding_shadow_hnsw_idx"
-		if _, err := s.pool.Exec(ctx,
+		if _, err := conn.Exec(ctx,
 			fmt.Sprintf("CREATE INDEX IF NOT EXISTS %s ON %s USING hnsw (embedding_shadow vector_cosine_ops)", idx, table),
 		); err != nil {
 			return fmt.Errorf("shadow: create %s: %w", idx, err)
