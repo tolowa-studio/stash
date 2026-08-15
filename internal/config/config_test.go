@@ -67,6 +67,25 @@ func TestShadowEnabledNeedsBothModelAndCredential(t *testing.T) {
 	}
 }
 
+func TestProviderRerankConfigIsOptionalAndNeedsModelAndCredential(t *testing.T) {
+	typ := reflect.TypeOf(Config{})
+	for _, name := range []string{"ProviderRerankModel", "ProviderRerankAPIKey", "ProviderRerankBaseURL", "ProviderRerankCandidateLimit"} {
+		field, ok := typ.FieldByName(name)
+		if !ok || !strings.Contains(string(field.Tag), "envDefault:") {
+			t.Fatalf("%s must remain optional, field=%+v", name, field)
+		}
+	}
+	if (&Config{ProviderRerankModel: "Qwen/Qwen3-Reranker-0.6B"}).ProviderRerankEnabled() {
+		t.Fatal("model without credential must not enable provider reranking")
+	}
+	if (&Config{ProviderRerankAPIKey: "test"}).ProviderRerankEnabled() {
+		t.Fatal("credential without model must not enable provider reranking")
+	}
+	if !(&Config{ProviderRerankModel: "Qwen/Qwen3-Reranker-0.6B", ProviderRerankAPIKey: "test"}).ProviderRerankEnabled() {
+		t.Fatal("model and credential must enable provider reranking")
+	}
+}
+
 func TestShadowBaseURLFallsBackToTheLiveEndpoint(t *testing.T) {
 	cfg := &Config{OpenAIBaseURL: "https://api.deepinfra.com/v1/openai"}
 	if got := cfg.ShadowBaseURL(); got != "https://api.deepinfra.com/v1/openai" {

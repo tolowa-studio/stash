@@ -16,19 +16,20 @@ import (
 
 // RecallResult is a unified result from semantic search across episodes and facts.
 type RecallResult struct {
-	ID            int64   `json:"id"`
-	NamespaceID   int64   `json:"namespace_id"`
-	Content       string  `json:"content"`
-	Confidence    float32 `json:"confidence,omitempty"`
-	Score         float32 `json:"score"`
-	SemanticScore float32 `json:"semantic_score,omitempty"`
-	UtilityScore  float32 `json:"utility_score,omitempty"`
-	ImpressionID  int64   `json:"impression_id,omitempty"`
-	Type          string  `json:"type"`
-	OccurredAt    string  `json:"occurred_at,omitempty"`
-	ValidFrom     string  `json:"valid_from,omitempty"`
-	CreatedAt     string  `json:"created_at"`
-	RetrievalMode string  `json:"retrieval_mode,omitempty"`
+	ID                  int64   `json:"id"`
+	NamespaceID         int64   `json:"namespace_id"`
+	Content             string  `json:"content"`
+	Confidence          float32 `json:"confidence,omitempty"`
+	Score               float32 `json:"score"`
+	SemanticScore       float32 `json:"semantic_score,omitempty"`
+	UtilityScore        float32 `json:"utility_score,omitempty"`
+	ImpressionID        int64   `json:"impression_id,omitempty"`
+	Type                string  `json:"type"`
+	OccurredAt          string  `json:"occurred_at,omitempty"`
+	ValidFrom           string  `json:"valid_from,omitempty"`
+	CreatedAt           string  `json:"created_at"`
+	RetrievalMode       string  `json:"retrieval_mode,omitempty"`
+	ProviderRerankScore float32 `json:"provider_rerank_score,omitempty"`
 }
 
 // RecallOptions controls the additive learning ledger. Zero-value options keep
@@ -89,6 +90,10 @@ func (b *Brain) RecallWithOptions(ctx context.Context, namespaces []string, quer
 
 	learningEnabled := b.config.RetrievalLearningEnabled && opts.RecordOutcome
 	candidateLimit := limit
+	providerRerankEnabled := b.config.ProviderReranker != nil
+	if providerRerankEnabled && candidateLimit < b.config.ProviderRerankCandidateLimit {
+		candidateLimit = b.config.ProviderRerankCandidateLimit
+	}
 	if learningEnabled {
 		candidateLimit = limit * b.config.RetrievalOverfetchFactor
 		if candidateLimit > 300 {
@@ -144,7 +149,7 @@ func (b *Brain) RecallWithOptions(ctx context.Context, namespaces []string, quer
 
 	// Search episodes for remaining slots
 	episodeLimit := limit - len(results)
-	if learningEnabled {
+	if learningEnabled || providerRerankEnabled {
 		episodeLimit = candidateLimit
 	}
 	if episodeLimit > 0 {
@@ -195,6 +200,27 @@ func (b *Brain) RecallWithOptions(ctx context.Context, namespaces []string, quer
 			observability.RecordRecallLearningError("load_utility")
 		} else {
 			rerankResults(results, utilities, b.config.RetrievalUtilityWeight, b.config.RetrievalMaxUtilityDelta)
+		}
+	}
+
+	if providerRerankEnabled && len(results) > 0 {
+		documents := make([]string, len(results))
+		for i := range results {
+			documents[i] = results[i].Content
+		}
+		scores, err := b.config.ProviderReranker.Rerank(ctx, query, documents)
+		if err != nil {
+			// Provider ranking is an optimization, never an availability dependency.
+			// Preserve BGE-M3 semantic ranking and make the fallback visible.
+			for i := range results {
+				results[i].RetrievalMode = "semantic+provider_rerank_unavailable"
+			}
+		} else {
+			for i := range results {
+				results[i].ProviderRerankScore = scores[i]
+				results[i].Score = scores[i]
+				results[i].RetrievalMode = "semantic+provider_rerank"
+			}
 		}
 	}
 

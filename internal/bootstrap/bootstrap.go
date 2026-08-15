@@ -84,7 +84,7 @@ func New(ctx context.Context) (*Context, error) {
 		return nil, fmt.Errorf("parse consolidation window: %w", err)
 	}
 
-	br, err := brain.New(pool, cachedEmb, reas, q, brain.Config{
+	brainConfig := brain.Config{
 		BatchSize:                      cfg.ConsolidationBatchSize,
 		SimilarityThreshold:            cfg.ConsolidationSimilarityThreshold,
 		DedupThreshold:                 cfg.ConsolidationDedupThreshold,
@@ -99,9 +99,20 @@ func New(ctx context.Context) (*Context, error) {
 		RetrievalMaxUtilityDelta:       cfg.RetrievalMaxUtilityDelta,
 		RecallHistoryRetention:         cfg.RecallHistoryRetention,
 		EmbeddingBackfillBatch:         cfg.EmbeddingBackfillBatch,
+		ProviderRerankCandidateLimit:   cfg.ProviderRerankCandidateLimit,
 		MaxRecordAttempts:              cfg.MaxRecordAttempts,
 		CycleReasonerCallCeiling:       cfg.CycleReasonerCallCeiling,
-	})
+	}
+	if cfg.ProviderRerankEnabled() {
+		reranker, err := brain.NewDeepInfraReranker(cfg.ProviderRerankBaseURL, cfg.ProviderRerankAPIKey, cfg.ProviderRerankModel)
+		if err != nil {
+			pool.Close()
+			return nil, fmt.Errorf("build provider reranker: %w", err)
+		}
+		brainConfig.ProviderReranker = reranker
+		logger.Info("DeepInfra provider reranking configured", "model", cfg.ProviderRerankModel, "candidate_limit", cfg.ProviderRerankCandidateLimit)
+	}
+	br, err := brain.New(pool, cachedEmb, reas, q, brainConfig)
 	if err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("build brain: %w", err)

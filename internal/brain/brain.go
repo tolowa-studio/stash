@@ -66,6 +66,8 @@ type Config struct {
 	RetrievalMaxUtilityDelta       float64
 	RecallHistoryRetention         time.Duration
 	EmbeddingBackfillBatch         int
+	ProviderReranker               ProviderReranker
+	ProviderRerankCandidateLimit   int
 
 	// MaxRecordAttempts bounds how many times one record may fail a stage for a
 	// permanent reason before the watermark is allowed past it. Zero uses
@@ -93,6 +95,7 @@ func DefaultConfig() Config {
 		RetrievalMaxUtilityDelta:       0.10,
 		RecallHistoryRetention:         90 * 24 * time.Hour,
 		EmbeddingBackfillBatch:         25,
+		ProviderRerankCandidateLimit:   50,
 		MaxRecordAttempts:              DefaultMaxRecordAttempts,
 		CycleReasonerCallCeiling:       DefaultCycleReasonerCallCeiling,
 	}
@@ -133,6 +136,9 @@ func New(pool *pgxpool.Pool, e embedder.Embedder, r reasoner.Reasoner, q *querie
 	}
 	if cfg.EmbeddingBackfillBatch <= 0 {
 		cfg.EmbeddingBackfillBatch = 25
+	}
+	if cfg.ProviderRerankCandidateLimit <= 0 {
+		cfg.ProviderRerankCandidateLimit = 50
 	}
 	return &Brain{
 		pool:     pool,

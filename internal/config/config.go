@@ -103,6 +103,14 @@ type Config struct {
 	// Rows embedded per wave batch. Bounded so one command cannot spend without
 	// limit; the wave driver reports what it did and exits.
 	ShadowMigrateBatch int `env:"STASH_SHADOW_MIGRATE_BATCH" envDefault:"100"`
+
+	// Provider reranking is opt-in. It reranks a bounded BGE-M3 candidate set
+	// after semantic retrieval and falls back to that semantic ordering on any
+	// provider failure. Qwen3-Reranker-0.6B is the verified DeepInfra contract.
+	ProviderRerankModel          string `env:"STASH_DEEPINFRA_RERANK_MODEL" envDefault:""`
+	ProviderRerankAPIKey         string `env:"STASH_DEEPINFRA_RERANK_API_KEY" envDefault:""`
+	ProviderRerankBaseURL        string `env:"STASH_DEEPINFRA_RERANK_BASE_URL" envDefault:"https://api.deepinfra.com"`
+	ProviderRerankCandidateLimit int    `env:"STASH_DEEPINFRA_RERANK_CANDIDATE_LIMIT" envDefault:"50"`
 }
 
 // ShadowEnabled reports whether a shadow embedding representation is configured.
@@ -118,6 +126,10 @@ func (c *Config) ShadowBaseURL() string {
 		return c.ShadowEmbeddingBaseURL
 	}
 	return c.OpenAIBaseURL
+}
+
+func (c *Config) ProviderRerankEnabled() bool {
+	return c.ProviderRerankModel != "" && c.ProviderRerankAPIKey != ""
 }
 
 func NewFromFile(filename string) (*Config, error) {
