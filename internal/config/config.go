@@ -56,6 +56,18 @@ type Config struct {
 	RetrievalMaxUtilityDelta float64       `env:"STASH_RETRIEVAL_MAX_UTILITY_DELTA" envDefault:"0.10"`
 	RecallHistoryRetention   time.Duration `env:"STASH_RECALL_HISTORY_RETENTION" envDefault:"2160h"`
 	EmbeddingBackfillBatch   int           `env:"STASH_EMBEDDING_BACKFILL_BATCH" envDefault:"25"`
+
+	// Consolidation spend guardrails (TOL-295).
+	//
+	// MaxRecordAttempts bounds how often one record may fail a stage for a
+	// permanent reason before the watermark moves past it. Unbounded, a single
+	// unparseable record is re-sent to the paid reasoner every cycle forever.
+	//
+	// CycleReasonerCallCeiling is a hard per-namespace-per-cycle cap on reasoner
+	// calls, enforced regardless of watermark state — the backstop for the
+	// runaway we have not found yet.
+	MaxRecordAttempts        int `env:"STASH_MAX_RECORD_ATTEMPTS" envDefault:"3"`
+	CycleReasonerCallCeiling int `env:"STASH_CYCLE_REASONER_CALL_CEILING" envDefault:"50"`
 }
 
 func NewFromFile(filename string) (*Config, error) {
