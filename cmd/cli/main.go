@@ -158,6 +158,7 @@ func main() {
 					&cli.IntFlag{Name: "offset", Value: 0, Usage: "Result offset"},
 				},
 			},
+			shadowCommand(),
 			{
 				Name:  "consolidate",
 				Usage: "Consolidate memories",

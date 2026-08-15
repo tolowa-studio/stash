@@ -68,6 +68,43 @@ type Config struct {
 	// runaway we have not found yet.
 	MaxRecordAttempts        int `env:"STASH_MAX_RECORD_ATTEMPTS" envDefault:"3"`
 	CycleReasonerCallCeiling int `env:"STASH_CYCLE_REASONER_CALL_CEILING" envDefault:"50"`
+
+	// Shadow embedding migration (TOL-297).
+	//
+	// Entirely optional and inert unless BOTH ShadowEmbeddingModel and
+	// ShadowEmbeddingAPIKey are set. Nothing in the live read or write path
+	// consults these; they exist so a second embedding representation can be
+	// built alongside the live one and validated before any read-path swap.
+	//
+	// The API key deliberately reuses STASH_DEEPINFRA_EMBEDDING_API_KEY, the
+	// name the scoped provider JWT is already stored under in production, so the
+	// migration needs no credential move.
+	ShadowEmbeddingModel  string `env:"STASH_SHADOW_EMBEDDING_MODEL"`
+	ShadowEmbeddingAPIKey string `env:"STASH_DEEPINFRA_EMBEDDING_API_KEY"`
+	// Defaults to OpenAIBaseURL when empty.
+	ShadowEmbeddingBaseURL string `env:"STASH_SHADOW_OPENAI_BASE_URL"`
+	// Must stay under pgvector's 2000-dimension ceiling for an HNSW index on
+	// the `vector` type. Qwen3-Embedding-8B honours this via Matryoshka
+	// truncation: requesting 1024 returns exactly 1024 (measured 2026-08-14).
+	ShadowVectorDim int `env:"STASH_SHADOW_VECTOR_DIM" envDefault:"1024"`
+	// Rows embedded per wave batch. Bounded so one command cannot spend without
+	// limit; the wave driver reports what it did and exits.
+	ShadowMigrateBatch int `env:"STASH_SHADOW_MIGRATE_BATCH" envDefault:"100"`
+}
+
+// ShadowEnabled reports whether a shadow embedding representation is configured.
+// Both the model and its credential are required: a model without a key would
+// fail every call, and a key without a model has nothing to embed with.
+func (c *Config) ShadowEnabled() bool {
+	return c.ShadowEmbeddingModel != "" && c.ShadowEmbeddingAPIKey != ""
+}
+
+// ShadowBaseURL resolves the shadow provider endpoint, defaulting to the live one.
+func (c *Config) ShadowBaseURL() string {
+	if c.ShadowEmbeddingBaseURL != "" {
+		return c.ShadowEmbeddingBaseURL
+	}
+	return c.OpenAIBaseURL
 }
 
 func NewFromFile(filename string) (*Config, error) {
