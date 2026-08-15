@@ -28,6 +28,7 @@ type RecallResult struct {
 	OccurredAt    string  `json:"occurred_at,omitempty"`
 	ValidFrom     string  `json:"valid_from,omitempty"`
 	CreatedAt     string  `json:"created_at"`
+	RetrievalMode string  `json:"retrieval_mode,omitempty"`
 }
 
 // RecallOptions controls the additive learning ledger. Zero-value options keep
@@ -74,17 +75,17 @@ func (b *Brain) RecallWithOptions(ctx context.Context, namespaces []string, quer
 		limit = 100
 	}
 
-	vec, err := b.embedder.Embed(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("embed: %w", err)
-	}
-
-	pgVec := pgvector.NewVector(vec)
-
 	nsIDs, err := b.resolveNamespaceIDs(ctx, namespaces)
 	if err != nil {
 		return nil, err
 	}
+
+	vec, err := b.embedder.Embed(ctx, query)
+	if err != nil {
+		return b.recallLexical(ctx, nsIDs, query, limit)
+	}
+
+	pgVec := pgvector.NewVector(vec)
 
 	learningEnabled := b.config.RetrievalLearningEnabled && opts.RecordOutcome
 	candidateLimit := limit
@@ -130,6 +131,7 @@ func (b *Brain) RecallWithOptions(ctx context.Context, namespaces []string, quer
 			Score:         score,
 			SemanticScore: score,
 			Type:          "fact",
+			RetrievalMode: "semantic",
 			CreatedAt:     createdAt.Format(time.RFC3339),
 		})
 		if validFrom != nil {
@@ -175,6 +177,7 @@ func (b *Brain) RecallWithOptions(ctx context.Context, namespaces []string, quer
 				Score:         score,
 				SemanticScore: score,
 				Type:          "episode",
+				RetrievalMode: "semantic",
 				OccurredAt:    occurredAt.Format(time.RFC3339),
 				CreatedAt:     createdAt.Format(time.RFC3339),
 			})
@@ -213,6 +216,66 @@ func (b *Brain) RecallWithOptions(ctx context.Context, namespaces []string, quer
 	}
 
 	observability.RecordRecall(len(results), learningEnabled)
+	return results, nil
+}
+
+// recallLexical is the availability fallback for provider outages. It uses
+// PostgreSQL full-text ranking and therefore keeps recall useful without an
+// embedding call. The retrieval_mode field makes degradation explicit.
+func (b *Brain) recallLexical(ctx context.Context, nsIDs []int64, query string, limit int) ([]RecallResult, error) {
+	rows, err := b.pool.Query(ctx, `
+		WITH q AS (SELECT websearch_to_tsquery('english', $1) AS value), candidates AS (
+			SELECT f.id, f.namespace_id, f.content, f.confidence,
+			       NULL::timestamptz AS occurred_at, f.valid_from, f.created_at,
+			       ts_rank_cd(to_tsvector('english', f.content), q.value) AS score,
+			       'fact'::text AS memory_type
+			FROM facts f, q
+			WHERE f.namespace_id = ANY($2) AND f.deleted_at IS NULL
+			  AND (f.valid_until IS NULL OR f.valid_until > now())
+			  AND to_tsvector('english', f.content) @@ q.value
+			UNION ALL
+			SELECT e.id, e.namespace_id, e.content, NULL::real AS confidence,
+			       e.occurred_at, NULL::timestamptz AS valid_from, e.created_at,
+			       ts_rank_cd(to_tsvector('english', e.content), q.value) AS score,
+			       'episode'::text AS memory_type
+			FROM episodes e, q
+			WHERE e.namespace_id = ANY($2) AND e.deleted_at IS NULL
+			  AND to_tsvector('english', e.content) @@ q.value
+		)
+		SELECT id, namespace_id, content, confidence, occurred_at, valid_from, created_at, score, memory_type
+		FROM candidates ORDER BY score DESC, created_at DESC LIMIT $3`, query, nsIDs, limit)
+	if err != nil {
+		return nil, fmt.Errorf("lexical recall: %w", err)
+	}
+	defer rows.Close()
+
+	results := make([]RecallResult, 0, limit)
+	for rows.Next() {
+		var result RecallResult
+		var confidence *float32
+		var occurredAt, validFrom *time.Time
+		var createdAt time.Time
+		if err := rows.Scan(&result.ID, &result.NamespaceID, &result.Content, &confidence, &occurredAt, &validFrom, &createdAt, &result.Score, &result.Type); err != nil {
+			return nil, fmt.Errorf("scan lexical recall: %w", err)
+		}
+		if confidence != nil {
+			result.Confidence = *confidence
+		}
+		if occurredAt != nil {
+			result.OccurredAt = occurredAt.Format(time.RFC3339)
+		}
+		if validFrom != nil {
+			result.ValidFrom = validFrom.Format(time.RFC3339)
+		}
+		result.CreatedAt = createdAt.Format(time.RFC3339)
+		result.RetrievalMode = "lexical_degraded"
+		results = append(results, result)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("lexical recall rows: %w", err)
+	}
+	observability.RecordDegradedRecall(len(results))
+	observability.RecordRecall(len(results), false)
 	return results, nil
 }
 
